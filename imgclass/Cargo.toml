@@ -1,0 +1,11 @@
+[package]
+name = "catdog"
+version = "0.0.1"
+authors = ["Desmond Germans, <desmond@germansmedia.nl>"]
+description = "image classifier experiment from training to edge inference"
+edition = "2021"
+
+[dependencies]
+ort = { version = "2.0.0-rc.9", features = ["cuda"] }
+image = "*"
+ndarray = "*"
