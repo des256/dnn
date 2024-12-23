@@ -1,18 +1,20 @@
 use {
     image::{imageops::FilterType, GenericImageView},
     ndarray::Array,
-    ort::{
-        execution_providers::{CPUExecutionProvider, CUDAExecutionProvider},
-        inputs,
-        session::{Session, SessionOutputs},
+    std::{
+        collections::HashMap,
+        time::{Duration, Instant},
     },
-    std::time::{Duration, Instant},
+    wonnx::{
+        utils::{InputTensor, OutputTensor},
+        Session,
+    },
 };
 
 const ONNX_PATH: &str = "catdog.onnx";
 const REPEATS: usize = 1000;
 
-fn check_image(model: &Session, path: &str) -> (f32, Duration) {
+async fn check_image(model: &Session, path: &str) -> (f32, Duration) {
     // load image
     let img = image::open(path).unwrap();
 
@@ -40,15 +42,24 @@ fn check_image(model: &Session, path: &str) -> (f32, Duration) {
         input[[0, y, x, 2]] = b as f32 / 255.0;
     }
 
+    let mut input_data = HashMap::<String, InputTensor>::new();
+    input_data.insert(
+        "serving_default_input_1:0".to_string(),
+        input.as_slice().unwrap().into(),
+    );
+
     // run inference
     let start = Instant::now();
     let mut x = 0.0f32;
-    for i in 0..REPEATS {
-        let outputs: SessionOutputs = model.run(inputs![input.clone()].unwrap()).unwrap();
-        let output = outputs["StatefulPartitionedCall:0"]
-            .try_extract_tensor::<f32>()
-            .unwrap();
-        x = output.as_slice().unwrap()[0];
+    for _ in 0..REPEATS {
+        let outputs = model.run(&input_data).await.unwrap();
+        let output = outputs.get("StatefulPartitionedCall:0").unwrap();
+        x = match output {
+            OutputTensor::U8(data) => (data[0] as f32) / 255.0,
+            OutputTensor::F32(data) => data[0],
+            OutputTensor::I32(data) => data[0] as f32,
+            OutputTensor::I64(data) => data[0] as f32,
+        };
     }
     let end = Instant::now();
 
@@ -59,26 +70,16 @@ fn check_image(model: &Session, path: &str) -> (f32, Duration) {
     )
 }
 
-fn main() {
-    // initialize ONNX runtime
-    ort::init()
-        .with_execution_providers([CUDAExecutionProvider::default().build().error_on_failure()])
-        //.with_execution_providers([CPUExecutionProvider::default().build().error_on_failure()])
-        .commit()
-        .unwrap();
-
+async fn async_main() {
     // load the model
-    let model = Session::builder()
-        .unwrap()
-        .commit_from_file(ONNX_PATH)
-        .unwrap();
+    let model = Session::from_path(ONNX_PATH).await.unwrap();
 
     // run inference on all images in the testdata directory
     let image_paths = std::fs::read_dir("testdata").unwrap();
     for image_path in image_paths {
         let image_path = image_path.unwrap().path();
         let image_name = image_path.file_name().unwrap().to_str().unwrap();
-        let (prediction, duration) = check_image(&model, image_path.to_str().unwrap());
+        let (prediction, duration) = check_image(&model, image_path.to_str().unwrap()).await;
         if prediction > 0.5 {
             println!(
                 "{} is a dog ({:.2}us)",
@@ -93,4 +94,8 @@ fn main() {
             );
         }
     }
+}
+
+fn main() {
+    pollster::block_on(async_main());
 }

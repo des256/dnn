@@ -7,12 +7,14 @@ import cv2
 import tensorflow as tf
 from tensorflow_model_optimization.python.core.keras.compat import keras
 import tensorflow_model_optimization as tfmot
+import imgclass.train.convert as convert
 
 AUGMENTATION_RANDOM = 0.2
 BATCH_SIZE = 64
 EPOCHS = 50
 LEARNING_RATE = 3e-4
 OUTPUT_PATH = "catdog.tflite"
+ONNX_PATH = "../catdog.onnx"
 
 '''
 # filter out corrupt images
