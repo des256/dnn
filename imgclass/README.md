@@ -33,3 +33,4 @@ A quick test was done with 5 epochs and the results looked promising (as in, it 
 
 ### Raspberry Pi 5
 
+It runs on CPU at around 38ms per image. Would be interesting to see if there is some implementation that uses Vulkan compute shaders... Maybe wonnx.
