@@ -7,11 +7,12 @@ import cv2
 import tensorflow as tf
 from tensorflow_model_optimization.python.core.keras.compat import keras
 import tensorflow_model_optimization as tfmot
-import imgclass.train.convert as convert
+import tf2onnx
+import onnx
 
 AUGMENTATION_RANDOM = 0.2
 BATCH_SIZE = 64
-EPOCHS = 50
+EPOCHS = 1
 LEARNING_RATE = 3e-4
 OUTPUT_PATH = "catdog.tflite"
 ONNX_PATH = "../catdog.onnx"
@@ -101,28 +102,27 @@ def make_model():
 model = make_model()
 #keras.utils.plot_model(model,show_shapes=True)
 
-qa_model = tfmot.quantization.keras.quantize_model(model)
-
 # train
-'''
 callbacks = [
     keras.callbacks.ModelCheckpoint(
         "cp{epoch}-{val_loss:.2f}.keras",
     ),
 ]
 model.compile(
-    optimizer=keras.optimizers.Adam(3e-4),
+    optimizer=keras.optimizers.Adam(LEARNING_RATE),
     loss=keras.losses.BinaryCrossentropy(from_logits=True),
     metrics=[keras.metrics.BinaryAccuracy(name="acc")],
 )
 model.summary()
 model.fit(
     train_ds,
-    epochs=epochs,
+    epochs=EPOCHS,
     callbacks=callbacks,
     validation_data=val_ds
 )
+
 '''
+qa_model = tfmot.quantization.keras.quantize_model(model)
 
 qa_callbacks = [
     keras.callbacks.ModelCheckpoint(
@@ -149,3 +149,15 @@ quantized_model = converter.convert()
 # save as TFLite
 with open(OUTPUT_PATH,"wb") as file:
     file.write(quantized_model)
+'''
+
+# convert to ONNX
+tf2onnx.convert.from_keras(model,output_path=ONNX_PATH,opset=16)
+
+# manually remove ai.onnx.ml domain so wonnx can use it...
+onnx_model = onnx.load(ONNX_PATH)
+if len(onnx_model.opset_import) == 2:
+    print("opset imports before: ",onnx_model.opset_import)
+    onnx_model.opset_import.pop()
+    print("opset imports after: ",onnx_model.opset_import)
+onnx.save(onnx_model,ONNX_PATH)
